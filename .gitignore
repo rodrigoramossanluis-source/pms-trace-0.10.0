@@ -1,0 +1,32 @@
+# Runtime artifacts - they contain REAL case ids, booking refs and property data. Never commit.
+runs/
+pms_tools/
+*.bak.*
+*.corrupt.*
+*.lock
+*.tmp.*
+# A KB that has been used live accumulates history entries with real refs.
+# Only commit connector_kb.json after resetting/sanitizing its "history" arrays.
+.DS_Store
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.coverage
+htmlcov/
+# Local test output (run_mock_test.sh --save / --keep)
+test-reports/
+
+# Virtualenvs & local tooling
+.venv/
+venv/
+.env
+.idea/
+.vscode/
+*.swp
+.mypy_cache/
+.ruff_cache/

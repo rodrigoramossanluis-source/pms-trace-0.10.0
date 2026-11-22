@@ -1,0 +1,597 @@
+{
+ "kb_name": "connector-knowledge-base",
+ "schema_version": "0.9.7",
+ "created": "2026-01-01",
+ "maintainer": "open-source-maintainer",
+ "purpose": "Runtime knowledge source for support investigation tools (trace, fidelity-check, overbooking, ARI). Tools resolve channel/PMS modules here instead of hardcoding per-connector logic. Update = drop/edit a module, no tool redeploy.",
+ "update_protocol": [
+  "One module per channel (channels.<CODE>) and per PMS (pms.<CODE>).",
+  "Every fact carries source_url + verified_at. Never fill from memory alone; null = unverified.",
+  "confidence: verified (seen in logs/docs this date), documented (wiki page, not log-verified), assumed (needs check).",
+  "On any live-case mismatch vs a module, fix the module AND bump its verified_at; bump schema_version only on structural change.",
+  "When a module is missing, tools run discovery mode and emit a stub skeleton to complete.",
+  "Tools append {ts, case, mode, ref, apps_confirmed_live, source} into module.history on every run (including zero-hit discovery runs via kb_write). The KB is the single source of truth for what has been tried.",
+  "kb-test anchor probes require example_anchors.trace_token + event_date per module; keep both populated."
+ ],
+ "canonical_model": {
+  "description": "Normalized reservation fields every tool maps endpoint docs into before diffing.",
+  "fields": {
+   "reservation.id.channel": "Channel-native booking reference (e.g. OTA1-1000000000000001, OTA2-1000000001)",
+   "reservation.id.pms": "PMS-side locator (e.g. DIR-OTA1-...-1 in pms-hub, PMSA_XML confirmationID)",
+   "reservation.id.cm_uuid": "hubBookingUuid (pms-hub internal UUID)",
+   "rate.amount_after_tax": "Gross daily/total amount incl. tax",
+   "rate.amount_before_tax": "Net daily/total amount excl. tax",
+   "rate.taxes[]": "{code, amount, type(Inclusive|Exclusive), currency}",
+   "rate.currency": "ISO currency",
+   "rate.collect_model": "ChannelCollect|HotelCollect|merchant|agency (channel-specific payment model)",
+   "pms.config.rate_without_tax": "PMS delivery config flag: send before-tax amount (Yes|No)",
+   "hotel.code.channel": "Hotel code the channel uses",
+   "hotel.code.pms": "Hotel code sent to the PMS (e.g. OXI000001, HOTEL01)",
+   "correlation.trace_token": "Platform flowToken",
+   "correlation.echo_token": "OTA EchoToken",
+   "correlation.message_uuid": "PMS-bound message UUID / PMSA_XML Label id"
+  }
+ },
+ "channels": {
+  "OTA1": {
+   "name": "Channel One (New)",
+   "code": "OTA1",
+   "integration": "ChannelRelay (CUR relay)",
+   "ref_prefixes": [
+    "OTA1-"
+   ],
+   "booking_agent_code": "OTA1",
+   "message_format": "OTA_HotelResNotifRQ/RS (http://www.opentravel.org/OTA/2003/05)",
+   "id_fields": {
+    "res_id": "HotelReservation/UniqueID[@Type='14']",
+    "echo": "root @EchoToken"
+   },
+   "tax_fields": {
+    "after_tax": "RoomStays//Base/@AmountAfterTax and ResGlobalInfo/Total/@AmountAfterTax",
+    "before_tax": "RoomStays//Base/@AmountBeforeTax and ResGlobalInfo/Total/@AmountBeforeTax",
+    "tax_list": "ResGlobalInfo/Total/Taxes/Tax (@Amount @Code @Type=Inclusive)",
+    "commission_flag": "ResGlobalInfo/Total/TPA_Extensions/Total/@includesCommission"
+   },
+   "behavior_rules": [
+    {
+     "rule": "ChannelCollect rate plans are sent with NET rates; HotelCollect with GROSS rates",
+     "source_url": "https://docs.example.com/connectors/ota1",
+     "verified_at": "2026-01-01",
+     "confidence": "documented"
+    },
+    {
+     "rule": "ChannelCollect NET observed = tax-INCLUSIVE, commission-exclusive (includesCommission=false); VCC remit equals AmountAfterTax",
+     "source_url": "case CASE-0001 XML evidence",
+     "verified_at": "2026-01-01",
+     "confidence": "verified"
+    }
+   ],
+   "log_apps": {
+    "reservation_inbound": null,
+    "ari_outbound": null,
+    "_note": "fill with k8s app names on next log pull (candidate: nw-* / channelrelay components)"
+   },
+   "capabilities": {
+    "res_tax_components": null
+   },
+   "example_anchors": {
+    "reservation": "OTA1-1000000000000001",
+    "trace_token": "00000000-0000-4000-8000-000000000001",
+    "echo_token": "00000000-0000-4000-8000-000000000002",
+    "case": "CASE-0001",
+    "verified_at": "2026-01-01",
+    "event_date": "2026-01-10"
+   },
+   "resolution": "needs-discovery: no log apps in KB; tool will try cm-ota1 convention then stop",
+   "history": []
+  },
+  "OTA2": {
+   "name": "Channel Two",
+   "code": "OTA2",
+   "integration": "ChannelRelay",
+   "ref_prefixes": [
+    "OTA2-"
+   ],
+   "log_apps": {
+    "reservation_inbound": "cm-ota2/booking-gateway",
+    "ari_outbound": "cm-ota2/avail-gateway",
+    "other_apps": [
+     "cm-ota2/booking-processor",
+     "cm-ota2/booking-job",
+     "cm-ota2/avail-api",
+     "cm-ota2/property-api"
+    ]
+   },
+   "behavior_rules": [
+    {
+     "rule": "cm-ota2/booking-gateway is keyed by the CM hotel UUID; property-api is keyed by the OTA hotel id",
+     "source_url": "case CASE-0002 run",
+     "verified_at": "2026-01-01",
+     "confidence": "verified"
+    }
+   ],
+   "capabilities": {},
+   "example_anchors": {
+    "reservation": "OTA2-1000000001",
+    "case": "CASE-0002",
+    "verified_at": "2026-01-01"
+   },
+   "history": [],
+   "system": "cm-ota2"
+  },
+  "OTA3": {
+   "name": "Channel Three",
+   "code": "OTA3",
+   "integration": "ChannelRelay (relay XML)",
+   "ref_prefixes": [
+    "OTA3-"
+   ],
+   "log_apps": {
+    "reservation_inbound": "cm-ota3/booking-gateway cm-ota3/booking-processor",
+    "ari_outbound": "cm-ota3/avail-gateway"
+   },
+   "behavior_rules": [],
+   "capabilities": {},
+   "example_anchors": {
+    "reservation": "OTA3-1000000001",
+    "case": "CASE-0003",
+    "verified_at": "2026-01-01"
+   },
+   "system": "cm-ota3",
+   "history": []
+  },
+  "OTA4": {
+   "name": "Channel Four",
+   "code": "OTA4",
+   "integration": "cm-ota4 (dedicated connector stack, logs/cm-ota4/*)",
+   "ref_prefixes": [
+    "ota4-",
+    "OTA4-"
+   ],
+   "app_match": "ota4",
+   "log_apps": {
+    "reservation_inbound": "cm-ota4/notify-gateway",
+    "ari_outbound": "cm-ota4/avail-gateway"
+   },
+   "other_apps": [
+    "cm-ota4/booking-processor",
+    "cm-ota4/msg-mapper",
+    "cm-ota4/notify-processor",
+    "cm-ota4/avail-api",
+    "cm-ota4/listing-proxy"
+   ],
+   "behavior_rules": [
+    {
+     "rule": "Always scan the bare confirmation code as a second pattern; for pms-hub scans the bare code is MANDATORY",
+     "source_url": "case CASE-0004",
+     "verified_at": "2026-01-01",
+     "confidence": "verified"
+    }
+   ],
+   "capabilities": {},
+   "example_anchors": {
+    "reservation": "ota4-DEMO000001",
+    "trace_token": "00000000-0000-4000-8000-000000000004",
+    "event_date": "2026-01-10",
+    "verified_at": "2026-01-01"
+   },
+   "history": [],
+   "system": "cm-ota4"
+  }
+ },
+ "pms": {
+  "PMSA_XML": {
+   "name": "PMSA PMSA_XML",
+   "code": "PMSA_XML",
+   "connection": "PULL by PMS",
+   "xml_schema": "reservation.fidelio.5.0 (Reservation root, Label PI: hotelCode|RESERVATION|uuid|STATUS)",
+   "hotel_code_pattern": "PMSA_XML*",
+   "delivery_apps": [
+    "hub-pmsa-xml",
+    "pms-hub/booking-api",
+    "pms-hub/pms-booking-events",
+    "pms-hub/hub-booking-events"
+   ],
+   "behavior_rules": [
+    {
+     "rule": "PMSA_XML is PULL by PMS: completion = GET /pmsBookings/:id/revisions/:rev/status; status events Pending -> Delivered|Error",
+     "source": "case CASE-0005 run analysis",
+     "verified_at": "2026-01-01",
+     "confidence": "verified"
+    }
+   ],
+   "delivery_status_labels": [
+    "SUCCESS",
+    "ERROR"
+   ],
+   "example_anchors": {
+    "hotel_code": "OXI000001",
+    "message_uuid": "00000000-0000-4000-8000-000000000010",
+    "verified_at": "2026-01-01",
+    "event_date": "2026-01-10"
+   },
+   "history": []
+  },
+  "PMSA_REST": {
+   "name": "PMSA PMSA_REST",
+   "code": "PMSA_REST",
+   "connection": "PUSH to PMS",
+   "hotel_code_pattern": "HOTEL*",
+   "delivery_apps": [
+    "hub-pmsa-rest",
+    "pms-hub/booking-api",
+    "pms-hub/pms-booking-events",
+    "pms-hub/hub-booking-events"
+   ],
+   "inventory_apps": [
+    "xengine",
+    "hub-pmsa-rest"
+   ],
+   "id_fields": {
+    "pms_reservation_id": "DIR-<channelRef>-<version>",
+    "route": "/pmsProperties/{propertyUuid}/reservations/{hubBookingUuid}/pmsBookings/{pmsBookingId}"
+   },
+   "event_model": "status events Pending -> Delivered|Error per flowToken",
+   "example_anchors": {
+    "hotel_uuid": "00000000-0000-4000-8000-000000000011",
+    "reservation": "DIR-OTA1-1000000001-1",
+    "trace_token": "00000000-0000-4000-8000-000000000012",
+    "verified_at": "2026-01-01",
+    "event_date": "2026-01-10"
+   },
+   "bucket_hint": "fluentbit",
+   "behavior_rules": [],
+   "history": []
+  },
+  "LEGACYPMS": {
+   "name": "LegacyPMS",
+   "code": "LEGACYPMS",
+   "delivery_apps": [
+    "pms-hub/booking-api",
+    "pms-hub/pms-booking-events",
+    "pms-hub/hub-booking-events"
+   ],
+   "example_anchors": {
+    "hubPmsPropertyUuid": "00000000-0000-4000-8000-000000000013",
+    "event_date": "2026-01-10",
+    "verified_at": "2026-01-01"
+   },
+   "history": []
+  },
+  "CLOUDPMS": {
+   "name": "CloudPMS",
+   "code": "CLOUDPMS",
+   "connection": "internal bridge (pms-cm-bridge); bookings drop into Front Desk via state-sync-api",
+   "delivery_apps": [
+    "pms-hub/booking-api",
+    "pms-hub/pms-booking-events",
+    "pms-hub/hub-booking-events",
+    "pms-cm-bridge/state-sync-api",
+    "pms-cm-bridge/booking-api"
+   ],
+   "inventory_apps": [
+    "pms-cm-bridge/avail-sync"
+   ],
+   "other_apps": [
+    "cloudpms/main-ra",
+    "cloudpms/booking-api",
+    "cloudpms/deferred-jobs",
+    "cloudpms/payments-hub-sync"
+   ],
+   "behavior_rules": [],
+   "example_anchors": {
+    "reservation": "OTA2-1000000001",
+    "propkey": "00000000-0000-4000-8000-000000000014",
+    "event_date": "2026-01-10",
+    "verified_at": "2026-01-01"
+   },
+   "history": []
+  }
+ },
+ "query_templates": {
+  "delivery_trace": "for each app in module.delivery_apps: s3 grep '{ref}' OR '{cm_uuid}' OR '{trace_token}' in prod/{app} for date range; classify Pending/Delivered/Error",
+  "fidelity_fetch": "fetch channel-source doc (module.channels log_apps.reservation_inbound, by echo/trace token) AND pms-bound doc (module.pms delivery_apps, by message uuid/label); normalize both to canonical_model; emit per-field PRESERVED|TRANSFORMED|DROPPED|ADDED",
+  "tax_semantics": "if pms.config.rate_without_tax=Yes and pms_doc.rate.amount == channel_doc.rate.amount_after_tax and channel_doc.rate.amount_before_tax present -> verdict CONFIG_IGNORED",
+  "ari_inbound_trace": "no-token search: per day+hour loop, s3search query hub-xbridge ari-feed '<d>-<h>' \"s.messageType='<rates|restrictions|availability>' AND s.hotelCode='<pms hotel code>' AND s.invTypeCode='<room>' AND s.ratePlanCode='<rate>'\" | fgrep '<stay-date>'",
+  "actor_attribution": "s3search query cm avail-api-<ra|rb> '<d>-*' \"s.propertyUuid='<uuid>' AND s.message like 'SET'\" -> read client/originSystem",
+  "bridge_ari_push": "s3search query pms-cm-bridge avail-sync '<d>-<h>' \"s.propkey='<propkey>' AND s.roomRateRef=<id>\" | jq '.time,.flowToken,.msg'"
+ },
+ "consumers": {
+  "pms_tool": [
+   "pms.*",
+   "channels.*.log_apps",
+   "query_templates.*",
+   "canonical_model"
+  ],
+  "overbooking_tool": [
+   "pms.*.inventory_apps",
+   "channels.*.ref_prefixes",
+   "channels.*.log_apps"
+  ],
+  "ari_tool": [
+   "channels.*.log_apps.ari_outbound",
+   "pms.*.inventory_apps",
+   "channels.*.behavior_rules"
+  ],
+  "unified_investigator": [
+   "ari_paths",
+   "attribution",
+   "systems",
+   "failure_signatures",
+   "query_templates",
+   "channels",
+   "pms"
+  ]
+ },
+ "tool_lessons": [
+  {
+   "lesson": "Never hand-pick component lists for trace sweeps: a system-wide '*' component scan found the booking that a curated other_apps list missed.",
+   "verified_at": "2026-01-01"
+  },
+  {
+   "lesson": "Low-selectivity follow keys (pmsType, hubPmsPropertyUuid, roomCode, ratePlanCode) sweep co-tenant traffic: f_* files from these kinds are context-only, excluded from gate evidence.",
+   "verified_at": "2026-01-01"
+  },
+  {
+   "lesson": "UPPERCASE RULE: CM booking IDs are stored UPPERCASE in every component; prefix presence varies by component.",
+   "verified_at": "2026-01-01"
+  }
+ ],
+ "failure_signatures": {
+  "PMS_BRIDGE_SYNC_DISABLED": {
+   "where": "pms-cm-bridge/avail-sync + pms-cm-bridge/state-sync-api",
+   "meaning": "bridgeEnabled or pmsAvailSyncOn not true - FD/calendar sync was disabled",
+   "fix_path": "check bridge sync toggles + state-sync-api errors by propkey, then trigger flush and recheck",
+   "terminal": false,
+   "verified_at": "2026-01-01"
+  },
+  "ERR_CONVERSION_UNMAPPED_ROOM_RATE": {
+   "where": "pms-hub/booking-api + pms-hub/pms-booking-events (conversion gate, before any PMS-specific connector)",
+   "meaning": "Reservation created in CM but room/rate not mapped Channel Manager -> PMS; delivery never attempted",
+   "fix_path": "map room/rate, then resend by hubBookingUuid/bookingRev",
+   "terminal": true,
+   "verified_at": "2026-01-01"
+  },
+  "ERR_PMS_BUSINESS_ERRORS": {
+   "where": "pms-hub/pms-booking-events (PMS connector response)",
+   "meaning": "PMS rejected the reservation with business errors (e.g. INACTIVE_HOTEL / rate plan not found in PMS)",
+   "fix_path": "Read the business-errors body for the exact reason and fix mapping on PMS side",
+   "terminal": true,
+   "verified_at": "2026-01-01"
+  },
+  "ARI_NO_ROOM_RATE_SYNC": {
+   "where": "pms-cm-bridge/avail-sync",
+   "meaning": "No Room Rate with sync enabled was found in DB",
+   "fix_path": "Verify sync toggles -> Sync Hotel with CM -> Flush -> recheck logs by propkey",
+   "terminal": false,
+   "verified_at": "2026-01-01"
+  },
+  "ARI_XENGINE_DATA_LOSS": {
+   "where": "xengine/ari-feed -> hub-xbridge/ari-feed",
+   "meaning": "Per-channel ARI updates dropped between xengine and hub-xbridge",
+   "fix_path": "Count 'process' events per side for the same hotelCode+date window; workaround = PMS flush/resend",
+   "terminal": false,
+   "verified_at": "2026-01-01"
+  },
+  "XENGINE_INVALID_CREDENTIALS": {
+   "where": "xengine/soap-gw",
+   "meaning": "PMS push received but rejected on credentials",
+   "fix_path": "s3search query xengine soap-gw <day>-* 's.hotelCode LIKE <code>' and read the error returned to the PMS",
+   "terminal": true,
+   "verified_at": "2026-01-01"
+  },
+  "ERR_INTERNAL_PROCESSING_FAILED": {
+   "where": "pms-hub/booking-api + pms-hub/pms-booking-events",
+   "meaning": "Downstream HTTP call during PMS delivery failed (e.g. 413 payload too large, 404 property not found)",
+   "fix_path": "confirm hop+size via flowToken; check property-record sync",
+   "terminal": true,
+   "verified_at": "2026-01-01"
+  }
+ },
+ "_file_version": "0.9.11-oss",
+ "low_selectivity_kinds": [
+  "sourceAgentCode",
+  "hubPmsPropertyUuid",
+  "hotelCode",
+  "pmsType",
+  "ratePlanCode",
+  "roomCode"
+ ],
+ "channel_codes": {
+  "_note": "Example channel code catalog. Unknown prefixes trigger automatic discovery and KB writeback.",
+  "_verified_at": "2026-01-01",
+  "codes": {
+   "OTA1": {
+    "name": "Channel One",
+    "channelrelay": true,
+    "status": "Live",
+    "type": "OTA"
+   },
+   "OTA2": {
+    "name": "Channel Two",
+    "channelrelay": false,
+    "status": "Live",
+    "type": "OTA"
+   },
+   "OTA3": {
+    "name": "Channel Three",
+    "channelrelay": false,
+    "status": "Live",
+    "type": "OTA"
+   },
+   "OTA4": {
+    "name": "Channel Four",
+    "channelrelay": false,
+    "status": "Live",
+    "type": "OTA"
+   }
+  }
+ },
+ "dedicated_systems": {
+  "OTA2": {
+   "system": "cm-ota2",
+   "confidence": "verified",
+   "verified_at": "2026-01-01"
+  },
+  "OTA3": {
+   "system": "cm-ota3",
+   "confidence": "verified",
+   "verified_at": "2026-01-01"
+  },
+  "OTA4": {
+   "system": "cm-ota4",
+   "confidence": "verified",
+   "verified_at": "2026-01-01"
+  }
+ },
+ "channelrelay": {
+  "system": "cm-channelrelay",
+  "apps": [
+   "cm-channelrelay/booking-gateway",
+   "cm-channelrelay/booking-processor"
+  ],
+  "inventory_join": "cm/*/avail-api by flowToken",
+  "skip_gates": [
+   "INVENTORY"
+  ],
+  "skip_gates_note": "Push reservation channel: no inventory stage in the booking path.",
+  "verified_at": "2026-01-01"
+ },
+ "ari_paths": {
+  "xengine_inbound": {
+   "name": "PMS exchange engine -> CM ARI",
+   "chain": [
+    "xengine/soap-gw",
+    "xengine/ari-feed",
+    "xengine/transform-api",
+    "xengine/ari-log",
+    "hub-xbridge/ari-relay",
+    "hub-xbridge/ari-log",
+    "hub-xbridge/ari-feed",
+    "pms-hub/avail-api",
+    "cm/avail-api-ra",
+    "cm/avail-api-rb"
+   ],
+   "verified_at": "2026-01-01"
+  },
+  "custom_pms_inbound": {
+   "name": "Custom PMS -> CM ARI",
+   "chain": [
+    "pmsa-rest/soap-gw",
+    "pmsa-rest/ari-feed",
+    "pmsa-rest/avail-sync",
+    "pmsa-rest/avail-sync-api",
+    "pms-hub/avail-api",
+    "cm/avail-api-ra",
+    "cm/avail-api-rb"
+   ],
+   "verified_at": "2026-01-01"
+  },
+  "bridge_inbound": {
+   "name": "CloudPMS -> CM ARI (pms-cm-bridge)",
+   "chain": [
+    "cloudpms (room_dates/room_rate_dates stream)",
+    "pms-cm-bridge/pms-inventory-subscriber",
+    "pms-cm-bridge (inventory_events stream)",
+    "pms-cm-bridge/avail-sync",
+    "pms-hub/avail-api",
+    "cm/avail-api-ra"
+   ],
+   "verified_at": "2026-01-01"
+  }
+ },
+ "attribution": {
+  "originsystem_values": {
+   "pms-hub": "update originated from a PMS push (via pms-hub)",
+   "cloud pms": "update originated in CloudPMS Front Desk",
+   "property platform": "manual or bulk update by a user in Platform/Extranet"
+  },
+  "verified_at": "2026-01-01"
+ },
+ "systems": {
+  "xengine": {
+   "components": [
+    "soap-gw",
+    "ari-feed",
+    "transform-api",
+    "ari-log",
+    "avail-api",
+    "avail-sync-api",
+    "mgmt-api"
+   ],
+   "role": "Deep PMS integration engine (SOAP/OTA); first contact for PMS pushes",
+   "verified_at": "2026-01-01"
+  },
+  "hub-xbridge": {
+   "components": [
+    "ari-relay",
+    "ari-log",
+    "ari-feed",
+    "ari-resync",
+    "booking-api",
+    "booking-dispatch",
+    "xengine-booking-events",
+    "mgmt-api"
+   ],
+   "role": "CM-side bridge for xengine PMSes",
+   "verified_at": "2026-01-01"
+  },
+  "pms-hub": {
+   "components": [
+    "booking-api",
+    "pms-booking-delivery",
+    "pms-booking-events",
+    "hub-booking-events",
+    "hub-booking-delivery",
+    "avail-api",
+    "avail-sync-api",
+    "entity-api",
+    "mgmt-api"
+   ],
+   "role": "Central PMS orchestration hub (proxy)",
+   "verified_at": "2026-01-01"
+  }
+ },
+ "kb_version": "0.9.11-oss",
+ "billing": {
+  "events_app": "billing-service/events",
+  "api_app": "billing-service/api",
+  "payments_app": "payments/payment-gateway",
+  "primary_pattern": "propkey",
+  "statuses": {
+   "accountStatus": [
+    "Active",
+    "Suspended",
+    "Dropped Off"
+   ]
+  }
+ },
+ "ops": {
+  "retention_horizons": {
+   "opensearch": "7d",
+   "live_index": "2d",
+   "s3_archive": "18 months"
+  }
+ },
+ "channelrelay_lgcy": {
+  "ari_bucket_glob": "channelrelay*sync*partition*{partition}*log*{region_suffix}*",
+  "key": "listingAcctId",
+  "default_partition_order": [
+   "three",
+   "one",
+   "two"
+  ],
+  "verified_at": "2026-01-01"
+ },
+ "bridge_flush": {
+  "note": "CM/Platform->CloudPMS flush failure playbook",
+  "related_defects": [
+   "DEFECT-001",
+   "DEFECT-002"
+  ],
+  "verified_at": "2026-01-01",
+  "validation_signatures": [],
+  "pitfalls": []
+ },
+ "version": "0.9.11-oss"
+}
