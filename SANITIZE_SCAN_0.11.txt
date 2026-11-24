@@ -1,0 +1,14 @@
+pms-trace 0.11 proprietary / PII scan
+Date: 2026-11-24
+Scope: full package tree excluding .venv, __pycache__, binary zips
+
+Result: PASS (no production proprietary carry-over)
+
+Findings:
+- No brand OTA names, identity-provider tenants, case IDs, or personal emails
+  in src/pms_trace/** or modes/**.
+- connector_kb.json UUIDs are nil/placeholder form (00000000-... pattern).
+- run_mock_test_py.sh uses RFC 5737 documentation IPs (198.51.100.x) and
+  synthetic UUIDs for fixtures only.
+
+Action: none required before 0.11 package build.
