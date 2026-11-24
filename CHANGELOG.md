@@ -3,6 +3,27 @@
 All notable changes to this project are documented here.
 Version lives in a single place: `src/pms_trace/__version__`.
 
+## [0.11.0] - 2026-11-23
+
+### Added
+- **Mode foundation** (`pms_trace.modes`): `ModeSpec`, `StageSpec`, `ModeRegistry`.
+- Default mode catalog: existing goals plus `ari-discrepancy` (stages declared; still bridges to `ari` task).
+- `tests/test_modes.py`, `REVIEW_0.11.md` (operator checklist).
+- Mode runner helpers: `state/mode_plan.json`, `state/stage_history.jsonl`, MODE PLAN section on REPORT.md.
+- Observational **ari-discrepancy** stage assessment (`modes/discrepancy.py` → `state/discrepancy_stages.json`).
+
+
+### Changed
+- CLI `GOAL_SPECS` derived from the mode registry (single source of truth).
+- Version **0.11.0**.
+
+### Policy
+- Verdicts remain **observational** (full history in REPORT / verdict.json).
+- Proven outcome taxonomies deferred to later releases after operator review.
+
+All notable changes to this project are documented here.
+Version lives in a single place: `src/pms_trace/__version__`.
+
 ## [0.10.0] - 2026-11-20
 
 ### Added
